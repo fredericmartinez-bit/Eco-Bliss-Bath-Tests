@@ -1,0 +1,6 @@
+[mariadb-client]
+port=3306
+socket=/run/mysqld/mysqld.sock
+user=healthcheck
+password=V_*G8b3dN8VoL?g@c--@saDl!xLoPcIM
+
