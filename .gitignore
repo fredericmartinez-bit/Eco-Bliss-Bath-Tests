@@ -1,1 +1,4 @@
 node_modules/
+data/
+mysql/
+.DS_Store
