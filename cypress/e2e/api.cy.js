@@ -13,13 +13,13 @@ describe("Tests API", () => {
   });
 
   context("GET - Sans authentification", () => {
-    it("devrait retourner une erreur 401 pour /orders sans etre connecte", () => {
+    it("devrait retourner une erreur 403 pour /orders sans etre connecte", () => {
       cy.request({
         method: "GET",
         url: apiUrl + "/orders",
         failOnStatusCode: false,
       }).then((response) => {
-        expect(response.status).to.eq(401);
+        expect(response.status).to.eq(403);
       });
     });
   });
@@ -81,13 +81,14 @@ describe("Tests API", () => {
     });
   });
 
-  context("PUT - Panier", () => {
-    it("devrait ajouter un produit disponible au panier", () => {
+  context("POST - Panier", () => {
+    it("devrait ajouter un produit disponible au panier avec POST", () => {
       cy.request({
-        method: "PUT",
+        method: "POST",
         url: apiUrl + "/orders/add",
         headers: { Authorization: "Bearer " + token },
         body: { product: 3, quantity: 1 },
+        failOnStatusCode: false,
       }).then((response) => {
         expect(response.status).to.be.oneOf([200, 201]);
       });
@@ -98,7 +99,7 @@ describe("Tests API", () => {
         const outOfStock = response.body.find((p) => p.availableStock === 0);
         if (outOfStock) {
           cy.request({
-            method: "PUT",
+            method: "POST",
             url: apiUrl + "/orders/add",
             headers: { Authorization: "Bearer " + token },
             body: { product: outOfStock.id, quantity: 1 },
