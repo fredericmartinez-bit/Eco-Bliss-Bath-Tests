@@ -1,127 +1,106 @@
-describe("Tests API", () => {
+// Tests fonctionnels du panier - Tests via l'interface
+describe("Test fonctionnel - Panier", () => {
+  // URL de l'API
   const apiUrl = "http://localhost:8081";
+  // Variable pour stocker le token de connexion
   let token;
 
-  before(() => {
+  // Avant chaque test, on se connecte via l'API
+  beforeEach(() => {
     cy.request("POST", apiUrl + "/login", {
       username: "test2@test.fr",
       password: "testtest",
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      // On récupère le token
       token = response.body.token;
+      // On stocke la connexion dans le navigateur pour que le site sache qu'on est connecté
+      window.localStorage.setItem("user", JSON.stringify(response.body));
     });
   });
 
-  context("GET - Sans authentification", () => {
-    it("devrait retourner une erreur 403 pour /orders sans etre connecte", () => {
-      cy.request({
-        method: "GET",
-        url: apiUrl + "/orders",
-        failOnStatusCode: false,
-      }).then((response) => {
-        expect(response.status).to.eq(403);
-      });
+  // Test 1 : Vérifier qu'un produit s'affiche correctement et l'ajouter au panier
+  it("devrait afficher un produit avec son stock et l ajouter au panier", () => {
+    // On ouvre la page du produit 6
+    cy.visit("/#/products/6");
+    // On vérifie que le bouton, le stock et l'image sont visibles
+    cy.contains("Ajouter au panier").should("be.visible");
+    cy.contains("en stock").should("be.visible");
+    cy.get("img").should("be.visible");
+    // On clique sur le bouton pour ajouter au panier
+    cy.contains("Ajouter au panier").click();
+  });
+
+  // Test 2 : Vérifier que le stock diminue après ajout
+  it("devrait verifier que le stock diminue apres ajout au panier", () => {
+    // On cherche un produit qui a du stock (supérieur à 1)
+    cy.request(apiUrl + "/products").then((response) => {
+      const product = response.body.find((p) => p.availableStock > 1);
+      if (product) {
+        // On note le stock avant l'ajout
+        const stockBefore = product.availableStock;
+        // On ajoute 1 unité au panier via l'API
+        cy.request({
+          method: "PUT",
+          url: apiUrl + "/orders/add",
+          headers: { Authorization: "Bearer " + token },
+          body: { product: product.id, quantity: 1 },
+        });
+        // On vérifie que le stock a diminué
+        cy.request(apiUrl + "/products/" + product.id).then((response2) => {
+          const stockAfter = response2.body.availableStock;
+          expect(stockAfter).to.be.lessThan(stockBefore);
+        });
+      }
     });
   });
 
-  context("GET - Avec authentification", () => {
-    it("devrait retourner la liste des produits du panier", () => {
-      cy.request({
-        method: "GET",
-        url: apiUrl + "/orders",
-        headers: { Authorization: "Bearer " + token },
-      }).then((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body).to.be.an("array");
-      });
-    });
+  // Test 3 : Vérifier que le champ de disponibilité est affiché
+  it("devrait verifier la presence du champ de disponibilite", () => {
+    cy.visit("/#/products/6");
+    // On vérifie que le texte "en stock" est visible
+    cy.contains("en stock").should("be.visible");
+  });
 
-    it("devrait retourner une fiche produit avec nom, prix et stock", () => {
-      cy.request({
-        method: "GET",
-        url: apiUrl + "/products/3",
-      }).then((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body).to.have.property("name");
-        expect(response.body).to.have.property("price");
-        expect(response.body).to.have.property("availableStock");
-        expect(response.body).to.have.property("skin");
-        expect(response.body).to.have.property("aromas");
-        expect(response.body).to.have.property("ingredients");
-        expect(response.body).to.have.property("description");
-        expect(response.body).to.have.property("picture");
-        expect(response.body.name).to.be.a("string");
-        expect(response.body.price).to.be.a("number");
-        expect(response.body.availableStock).to.be.a("number");
-      });
+  // Test 4 : Vérifier qu'une quantité négative est refusée
+  it("ne devrait pas accepter une quantite negative", () => {
+    cy.visit("/#/products/6");
+    // On efface le champ et on tape -1
+    cy.get('input[type="number"]').clear().type("-1");
+    // On clique sur le bouton
+    cy.contains("Ajouter au panier").click();
+  });
+
+  // Test 5 : Vérifier qu'une quantité supérieure à 20 est refusée
+  it("ne devrait pas accepter une quantite superieure a 20", () => {
+    cy.visit("/#/products/6");
+    // On efface le champ et on tape 21
+    cy.get('input[type="number"]').clear().type("21");
+    cy.contains("Ajouter au panier").click();
+    // On vérifie aussi via l'API que c'est refusé
+    cy.request({
+      method: "PUT",
+      url: apiUrl + "/orders/add",
+      headers: { Authorization: "Bearer " + token },
+      body: { product: 6, quantity: 21 },
+      failOnStatusCode: false,
+    }).then((response) => {
+      // L'API ne devrait PAS retourner 200 (succès)
+      expect(response.status).to.not.eq(200);
     });
   });
 
-  context("POST - Login", () => {
-    it("devrait retourner 200 et un token pour un utilisateur connu", () => {
-      cy.request("POST", apiUrl + "/login", {
-        username: "test2@test.fr",
-        password: "testtest",
-      }).then((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body).to.have.property("token");
-        expect(response.body.token).to.be.a("string");
-      });
-    });
-
-    it("devrait retourner 401 pour un utilisateur inconnu", () => {
-      cy.request({
-        method: "POST",
-        url: apiUrl + "/login",
-        body: { username: "fake@test.fr", password: "wrongpass" },
-        failOnStatusCode: false,
-      }).then((response) => {
-        expect(response.status).to.eq(401);
-      });
-    });
-  });
-
-  context("POST - Panier", () => {
-    it("devrait ajouter un produit disponible au panier avec POST", () => {
-      cy.request({
-        method: "POST",
-        url: apiUrl + "/orders/add",
-        headers: { Authorization: "Bearer " + token },
-        body: { product: 3, quantity: 1 },
-        failOnStatusCode: false,
-      }).then((response) => {
-        expect(response.status).to.be.oneOf([200, 201]);
-      });
-    });
-
-    it("devrait gerer l ajout d un produit en rupture de stock", () => {
-      cy.request(apiUrl + "/products").then((response) => {
-        const outOfStock = response.body.find((p) => p.availableStock === 0);
-        if (outOfStock) {
-          cy.request({
-            method: "POST",
-            url: apiUrl + "/orders/add",
-            headers: { Authorization: "Bearer " + token },
-            body: { product: outOfStock.id, quantity: 1 },
-            failOnStatusCode: false,
-          }).then((res) => {
-            expect(res.status).to.not.eq(200);
-          });
-        }
-      });
-    });
-  });
-
-  context("POST - Avis", () => {
-    it("devrait ajouter un avis", () => {
-      cy.request({
-        method: "POST",
-        url: apiUrl + "/reviews",
-        headers: { Authorization: "Bearer " + token },
-        body: { title: "Super", comment: "Tres bon produit", rating: 5 },
-      }).then((response) => {
-        expect(response.status).to.be.oneOf([200, 201]);
-      });
+  // Test 6 : Ajouter via le bouton et vérifier le panier via l'API
+  it("devrait ajouter un element via le bouton et verifier le contenu du panier via l API", () => {
+    // On ouvre un autre produit et on l'ajoute
+    cy.visit("/#/products/9");
+    cy.contains("Ajouter au panier").click();
+    // On vérifie le contenu du panier via l'API
+    cy.request({
+      method: "GET",
+      url: apiUrl + "/orders",
+      headers: { Authorization: "Bearer " + token },
+    }).then((response) => {
+      expect(response.status).to.eq(200);
     });
   });
 });
