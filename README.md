@@ -110,4 +110,3 @@ Résultat :
 - Docker
 - Angular pour le front-end
 - Symfony pour le back-end
-- 
