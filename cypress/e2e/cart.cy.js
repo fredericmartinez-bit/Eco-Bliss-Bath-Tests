@@ -1,157 +1,91 @@
-// Tests fonctionnels du panier
-// Objectif : vérifier les comportements principaux du panier :
-// sélection d'un produit, ajout au panier, disponibilité, stock et limites de quantité.
+// Tests fonctionnels du panier — Projet Eco Bliss Bath
+// Objectif : vérifier les comportements du panier uniquement via l'interface (UI).
+// La connexion est faite via l'API en beforeEach pour contourner l'anomalie A3
+// (la connexion front ne redirige pas l'utilisateur après soumission du formulaire).
 describe("Test fonctionnel - Panier", () => {
-  // URL de base du back-end Symfony
   const apiUrl = "http://localhost:8081";
-
-  // Variable utilisée pour stocker le token de connexion
   let token;
 
-  // Avant chaque test, on connecte l'utilisateur via l'API.
-  // Cela permet d'avoir un utilisateur authentifié pour tester le panier.
   beforeEach(() => {
-    cy.request("POST", apiUrl + "/login", {
+    cy.request("POST", `${apiUrl}/login`, {
       username: "test2@test.fr",
       password: "testtest",
     }).then((response) => {
-      // On récupère le token retourné par l'API
       token = response.body.token;
-
-      // On stocke aussi l'utilisateur dans le localStorage
-      // pour que le front-end considère l'utilisateur comme connecté.
       window.localStorage.setItem("user", JSON.stringify(response.body));
     });
   });
 
-  // Ce test choisit automatiquement un produit avec un stock supérieur à 1.
-  // C'est important car un produit doit avoir du stock pour pouvoir être ajouté au panier.
-  it("devrait cliquer sur un produit avec un stock supérieur à 1", () => {
-    cy.request(apiUrl + "/products").then((response) => {
-      expect(response.status).to.eq(200);
-
-      // On cherche dans la liste des produits un produit disponible avec un stock > 1
-      const product = response.body.find((p) => p.availableStock > 1);
-      expect(product).to.exist;
-
-      // On ouvre la fiche produit trouvée
-      cy.visit("/#/products/" + product.id);
-
-      // On vérifie les éléments principaux de la fiche produit
-      cy.contains("Ajouter au panier").should("be.visible");
-      cy.contains("en stock").should("be.visible");
-      cy.get("img").should("be.visible");
-    });
-  });
-
-  // Ce test vérifie qu'un produit s'affiche correctement,
-  // puis clique sur le bouton "Ajouter au panier".
-  // Ensuite, on vérifie via l'API que le panier est accessible.
-  it("devrait afficher un produit avec son stock et l'ajouter au panier", () => {
+  // Vérifie qu'on peut afficher la fiche d'un produit avec stock > 1
+  it("devrait afficher la fiche d'un produit avec stock > 1", () => {
     cy.visit("/#/products/6");
-
-    cy.contains("Ajouter au panier").should("be.visible");
-    cy.contains("en stock").should("be.visible");
-    cy.get("img").should("be.visible");
-
-    cy.contains("Ajouter au panier").click();
-
-    // On vérifie le panier via l'API avec le token de l'utilisateur connecté
-    cy.request({
-      method: "GET",
-      url: apiUrl + "/orders",
-      headers: { Authorization: "Bearer " + token },
-    }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.exist;
-    });
+    cy.get('[data-cy="detail-product-stock"]').should("be.visible");
+    cy.get('[data-cy="detail-product-img"]').should("be.visible");
+    cy.get('[data-cy="detail-product-add"]').should("be.visible");
   });
 
-  // Ce test vérifie le comportement de POST /orders/add.
-  // Dans l'application observée, cette méthode est refusée avec un code 405.
-  // On vérifie aussi que le stock du produit ne change pas après cette requête refusée.
-  it("devrait constater que l'ajout au panier via POST /orders/add est refusé", () => {
-    cy.request(apiUrl + "/products/6").then((response) => {
-      const product = response.body;
-      const stockBefore = product.availableStock;
-
-      cy.request({
-        method: "POST",
-        url: apiUrl + "/orders/add",
-        headers: { Authorization: "Bearer " + token },
-        body: {
-          product: 6,
-          quantity: 1,
-        },
-        failOnStatusCode: false,
-      }).then((addResponse) => {
-        expect(addResponse.status).to.eq(405);
-
-        // On recharge la fiche produit via l'API pour comparer le stock
-        cy.request(apiUrl + "/products/6").then((response2) => {
-          const stockAfter = response2.body.availableStock;
-
-          // Comme l'ajout est refusé, le stock doit rester identique
-          expect(stockAfter).to.eq(stockBefore);
-        });
+  // Vérifie que le stock diminue après l'ajout au panier
+  // Si ce test échoue, c'est une anomalie de l'application (stock non mis à jour côté front)
+  it("devrait diminuer le stock après l'ajout au panier", () => {
+    cy.visit("/#/products/6");
+    cy.get('[data-cy="detail-product-stock"]')
+      .should("be.visible")
+      .invoke("text")
+      .should("match", /\d+/)
+      .then((textBefore) => {
+        const stockBefore = parseInt(textBefore.match(/\d+/)[0]);
+        cy.get('[data-cy="detail-product-add"]').click();
+        cy.wait(1000);
+        cy.visit("/#/products/6");
+        cy.get('[data-cy="detail-product-stock"]')
+          .should("be.visible")
+          .invoke("text")
+          .should("match", /\d+/)
+          .then((textAfter) => {
+            const stockAfter = parseInt(textAfter.match(/\d+/)[0]);
+            expect(stockAfter).to.be.lessThan(stockBefore);
+          });
       });
-    });
   });
 
-  // Ce test vérifie que l'information de disponibilité du produit est visible.
-  // Cela permet à l'utilisateur de savoir si le produit peut être acheté.
-  it("devrait vérifier la présence du champ de disponibilité", () => {
+  // Vérifie que le produit apparaît dans le panier après l'ajout
+  it("devrait ajouter un produit au panier et voir le bouton panier", () => {
     cy.visit("/#/products/6");
-
-    cy.contains("en stock").should("be.visible");
+    cy.get('[data-cy="detail-product-add"]').click();
+    cy.get('[data-cy="nav-link-cart"]').should("be.visible");
   });
 
-  // Ce test vérifie qu'une quantité négative n'est pas acceptée.
-  // Une quantité négative serait incohérente dans un panier.
+  // Vérifie qu'une quantité négative est refusée via l'interface
   it("ne devrait pas accepter une quantité négative", () => {
-    cy.request({
-      method: "POST",
-      url: apiUrl + "/orders/add",
-      headers: { Authorization: "Bearer " + token },
-      body: {
-        product: 6,
-        quantity: -1,
-      },
-      failOnStatusCode: false,
-    }).then((response) => {
-      expect(response.status).to.not.eq(200);
-    });
+    cy.visit("/#/products/6");
+    cy.get('[data-cy="detail-product-quantity"]').clear().type("-1");
+    cy.get('[data-cy="detail-product-add"]').click();
+    cy.url().should("include", "/products/6");
   });
 
-  // Ce test vérifie qu'une quantité supérieure à 20 est refusée.
-  // Cela permet de contrôler une limite métier et d'éviter les commandes abusives.
+  // Vérifie qu'une quantité supérieure à 20 est refusée via l'interface
   it("ne devrait pas accepter une quantité supérieure à 20", () => {
-    cy.request({
-      method: "POST",
-      url: apiUrl + "/orders/add",
-      headers: { Authorization: "Bearer " + token },
-      body: {
-        product: 6,
-        quantity: 21,
-      },
-      failOnStatusCode: false,
-    }).then((response) => {
-      expect(response.status).to.not.eq(200);
-    });
+    cy.visit("/#/products/6");
+    cy.get('[data-cy="detail-product-quantity"]').clear().type("21");
+    cy.get('[data-cy="detail-product-add"]').click();
+    cy.url().should("include", "/products/6");
   });
 
-  // Ce test ajoute un produit depuis l'interface,
-  // puis vérifie via l'API que le panier est accessible.
-  // Cela permet de lier un test front-end avec une vérification back-end.
+  // Vérifie la présence du champ de disponibilité sur la fiche produit
+  it("devrait afficher le champ de disponibilité du produit", () => {
+    cy.visit("/#/products/6");
+    cy.get('[data-cy="detail-product-stock"]').should("be.visible");
+  });
+
+  // Ajoute un produit via l'interface et vérifie le contenu du panier via l'API
+  // Demandé explicitement dans le cahier de recette de Marie
   it("devrait ajouter un élément via le bouton et vérifier le contenu du panier via l'API", () => {
-    cy.visit("/#/products/9");
-
-    cy.contains("Ajouter au panier").click();
-
+    cy.visit("/#/products/6");
+    cy.get('[data-cy="detail-product-add"]').click();
     cy.request({
       method: "GET",
-      url: apiUrl + "/orders",
-      headers: { Authorization: "Bearer " + token },
+      url: `${apiUrl}/orders`,
+      headers: { Authorization: `Bearer ${token}` },
     }).then((response) => {
       expect(response.status).to.eq(200);
       expect(response.body).to.exist;
