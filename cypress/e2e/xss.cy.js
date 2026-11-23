@@ -1,75 +1,42 @@
-// Tests de sécurité XSS — Projet Eco Bliss Bath
-// Objectif : vérifier que le formulaire d'avis protège contre les injections XSS
-// en passant par l'interface utilisateur uniquement.
-describe("Test de faille XSS - Espace commentaire", () => {
-  const apiUrl = "http://localhost:8081";
+// Deux vecteurs XSS réellement soumis, retrouvés après rechargement et contrôlés.
+describe('Test de faille XSS - Espace commentaire', () => {
+  let token;
+  beforeEach(() => { cy.login().then((value) => { token = value; }); });
 
-  beforeEach(() => {
-    cy.request("POST", `${apiUrl}/login`, {
-      username: "test2@test.fr",
-      password: "testtest",
-    }).then((response) => {
-      window.localStorage.setItem("user", JSON.stringify(response.body));
-    });
-  });
-
-  // Test 1 : injection XSS dans le titre via le formulaire
-  it("devrait empêcher l'injection XSS dans le titre d'un avis", () => {
-    cy.visit("/#/reviews");
-
-    const xssPayload = '<script>alert("XSS")</script>';
-
-    // On clique sur la première étoile pour mettre une note
-    cy.get('[data-cy="review-input-rating-images"] img').first().click();
-
-    // On saisit le payload XSS dans le champ titre
-    cy.get('[data-cy="review-input-title"]').type(xssPayload);
-
-    // On saisit un commentaire normal
-    cy.get('[data-cy="review-input-comment"]').type("Test de sécurité");
-
-    // On soumet le formulaire
+  const verifyReview = (field, payload) => {
+    const marker = `XSS-${field}-${Date.now()}`;
+    const alert = cy.stub().as('xssAlert');
+    // L'observation commence avant la visite et reste active après rechargement.
+    cy.on('window:alert', alert);
+    cy.intercept('GET', '**/reviews').as('reviews');
+    cy.intercept('POST', '**/reviews').as('postReview');
+    cy.visitAsUser('/#/reviews', token);
+    cy.wait('@reviews').its('response.statusCode').should('eq', 200);
+    const title = field === 'title' ? `${marker} ${payload}` : marker;
+    const comment = field === 'comment' ? `${marker} ${payload}` : `Avis ${marker}`;
+    cy.get('[data-cy="review-input-rating-images"] img').last().click();
+    cy.get('[data-cy="review-input-title"]').type(title, { parseSpecialCharSequences: false });
+    cy.get('[data-cy="review-input-comment"]').type(comment, { parseSpecialCharSequences: false });
     cy.get('[data-cy="review-submit"]').click();
-
-    // On recharge la page et on vérifie que le script n'est pas exécuté
-    cy.visit("/#/reviews");
-
-    cy.get("body").then(($body) => {
-      expect($body.html()).to.not.include("<script>alert");
+    cy.wait('@postReview').then(({ response }) => {
+      expect(response.statusCode).to.be.oneOf([200, 201]);
     });
-
-    cy.on("window:alert", () => {
-      throw new Error("Une faille XSS a été détectée : une alerte a été déclenchée");
+    cy.wait('@reviews').then(({ response }) => {
+      expect(response.body.find((review) => review.title.includes(marker)), 'avis enregistré').to.exist;
     });
+    cy.reload();
+    cy.wait('@reviews').its('response.statusCode').should('eq', 200);
+    cy.contains('[data-cy="review-title"]', marker).should('be.visible')
+      .closest('[data-cy="review-detail"]').within(() => {
+        cy.get('script, [onerror], [onload]').should('not.exist');
+        cy.get('[data-cy="review-comment"]').should('contain', marker);
+      });
+    cy.get('@xssAlert').should('not.have.been.called');
+  };
+  it('empêche l’exécution d’un script injecté dans le titre', () => {
+    verifyReview('title', '<script>alert("XSS")</script>');
   });
-
-  // Test 2 : injection XSS dans le commentaire via le formulaire
-  it("devrait empêcher l'injection XSS dans le commentaire d'un avis", () => {
-    cy.visit("/#/reviews");
-
-    const xssPayload = '<img src="x" onerror="alert(\'XSS\')">';
-
-    // On clique sur la première étoile pour mettre une note
-    cy.get('[data-cy="review-input-rating-images"] img').first().click();
-
-    // On saisit un titre normal
-    cy.get('[data-cy="review-input-title"]').type("Test sécurité");
-
-    // On saisit le payload XSS dans le champ commentaire
-    cy.get('[data-cy="review-input-comment"]').type(xssPayload);
-
-    // On soumet le formulaire
-    cy.get('[data-cy="review-submit"]').click();
-
-    // On recharge la page et on vérifie que le code malveillant n'est pas présent
-    cy.visit("/#/reviews");
-
-    cy.get("body").then(($body) => {
-      expect($body.html()).to.not.include('onerror="alert');
-    });
-
-    cy.on("window:alert", () => {
-      throw new Error("Une faille XSS a été détectée via une balise img");
-    });
+  it('neutralise le gestionnaire onerror injecté dans le commentaire', () => {
+    verifyReview('comment', '<img src="x" onerror="alert(\'XSS\')">');
   });
 });

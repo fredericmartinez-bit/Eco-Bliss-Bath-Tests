@@ -174,7 +174,33 @@ Le bilan de la **campagne de référence** rapporte **27 tests exécutés, 26 r�
 
 Les contrôles ciblés ultérieurs ont confirmé A3 : un ajout de **21 articles** a été accepté avec seulement **3 disponibles**, et le stock est passé à **-18**. Le défaut concerne la validation des quantités côté serveur. Un ajout normal fait bien diminuer le stock : l’ancienne description d’un simple défaut de rafraîchissement ne correspond pas à l’anomalie confirmée.
 
-Ces contrôles ciblés sont distincts de la campagne de référence. Certaines assertions des scripts doivent être renforcées ; un test réussi ne suffit pas à prouver toute la conformité métier. Après correction de l’application ou des scripts, effectuer une nouvelle campagne et documenter ses résultats séparément.
+Ces contrôles ciblés sont distincts de la campagne de référence. Les assertions des scripts ont été renforcées dans la campagne datée ci-dessous. Un test réussi ne prouve pas toute la conformité métier. Après correction de l’application ou des scripts, effectuer une nouvelle campagne et documenter ses résultats séparément.
+
+### Campagne après correction des scripts le 23 novembre 2026
+
+Les scripts ont été corrigés pour contrôler une authentification réelle, le produit et la quantité ajoutés, la diminution du stock et les refus attendus. Les attentes sur les routes API remplacent les pauses fixes. Les tests XSS soumettent un avis, vérifient sa persistance puis son réaffichage et observent les alertes dès le début.
+
+Les 27 cas restent répartis dans les cinq mêmes fichiers :
+
+| Fichier | Réussites | Échecs |
+| --- | ---: | ---: |
+| api.cy.js | 7 | 1 |
+| cart.cy.js | 6 | 1 |
+| login.cy.js | 5 | 0 |
+| smoke.cy.js | 5 | 0 |
+| xss.cy.js | 2 | 0 |
+| **Total** | **25** | **2** |
+
+Ces deux échecs détectent **A3**, sans créer une quatrième fiche d’anomalie :
+
+- Le produit 4 en rupture (stock 0) accepte 1 unité avec une réponse 200 : stock -1 et quantité au panier de 1 à 2.
+- Le produit 6 (stock 12) accepte 21 unités avec une réponse 200 : stock -9 et quantité au panier de 0 à 21.
+
+Les tests attendent un refus (4xx) et des quantités inchangées. Les ajouts normaux et leur baisse de stock passent. Les cinq tests de connexion, les cinq smoke tests et les deux cas XSS passent. A1 et A2 restent des écarts avec les attentes initiales de Marie ; l’application n’a pas été modifiée.
+
+Les quantités initiales du panier sont restaurées après chaque test API ou panier, y compris après un échec. Les avis de test, identifiés par des titres uniques, restent dans cette base locale. Utiliser uniquement un environnement et un compte de test ; ne pas exécuter cette campagne en production.
+
+Ce passage a été réalisé avec Node.js 24.12.0, npm 11.6.2, Cypress 15.15.0 et Electron 138, sur une base séparée initialisée à partir du SQL fourni. Ses résultats sont distincts de la campagne historique à 26 réussites et 1 échec. Ils sont détaillés dans l’actualisation du bilan. La correction de la validation des quantités relève de l’équipe de développement ; les tests de refus devront être réexécutés après cette correction.
 
 ## 11. Arrêter les services
 
