@@ -176,24 +176,6 @@ Les contrôles ciblés ultérieurs ont confirmé A3 : un ajout de **21 articles*
 
 Ces contrôles ciblés sont distincts de la campagne de référence. Certaines assertions des scripts doivent être renforcées ; un test réussi ne suffit pas à prouver toute la conformité métier. Après correction de l’application ou des scripts, effectuer une nouvelle campagne et documenter ses résultats séparément.
 
-### Vérification de la procédure le 23 novembre 2026
-
-La procédure a été contrôlée sur macOS avec une copie propre du dépôt et une nouvelle base importée depuis `data/`. Les noms des conteneurs de contrôle ont été isolés de ceux de l’installation existante ; les tests et la configuration Cypress sont restés inchangés.
-
-- Installation par `npm ci` réussie ; Cypress 15.15.0 installé et vérifié.
-- MariaDB et Symfony démarrés et sains ; `/api/health` répond `{"status":"ok"}`.
-- Front démarré par `npm start`, compilation réussie et réponse HTTP 200.
-- Configuration Cypress de la racine chargée avec les dépendances de `frontend/`.
-- Les cinq fichiers ont été exécutés, et cinq rapports JUnit ont été générés.
-- Résultat de ce passage : **27 tests, 25 réussites, 2 échecs**, sans cas en attente ni ignoré dans le compteur Cypress.
-
-Les deux échecs observés sont :
-
-1. `api.cy.js` - refus d’un produit en rupture de stock : le serveur répond 200 alors que le test attend un refus. Ce résultat concerne la validation des quantités et du stock côté serveur.
-2. `cart.cy.js` - diminution du stock après ajout : le stock reste à 11 pendant ce test. Sa préparation stocke toute la réponse de connexion dans `localStorage.user`, alors que le front utilise ce contenu comme token. Un contrôle ciblé séparé donne 401 avec cette valeur et 200 avec le token seul ; avec le token seul, le stock passe de 11 à 10. Cet échec ne démontre donc pas un simple défaut de rafraîchissement du stock.
-
-Ce nouveau passage ne remplace pas les chiffres de la campagne historique du bilan. L’installation et le lancement sont opérationnels ; les anomalies et limites des scripts restent à prendre en compte.
-
 ## 11. Arrêter les services
 
 Arrêter le front avec `Ctrl+C` dans le terminal 2. Depuis la racine, arrêter l’API et la base :
